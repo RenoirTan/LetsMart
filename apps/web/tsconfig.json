@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "plugins": [{ "name": "next" }],
+    "paths": {
+      "@/*": ["./*"],
+      "@sea-ops/schemas": ["../../packages/schemas/src"],
+      "@sea-ops/mock-data": ["../../packages/mock-data/src"],
+      "@sea-ops/workers": ["../../packages/workers/src"],
+      "@sea-ops/agents": ["../../packages/agents/src"],
+      "@sea-ops/tools": ["../../packages/tools/src"],
+      "@sea-ops/core": ["../../packages/core/src"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}

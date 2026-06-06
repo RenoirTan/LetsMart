@@ -1,0 +1,4 @@
+orderId,channel,sku,productName,quantity,region,courier,orderedAt,status
+SHP-WE-001,shopee,WE-BLK-SEA,Wireless Earbuds,1,Selangor,J&T Express,2026-06-01T10:00:00.000Z,paid
+SHP-WE-002,shopee,WE-BLK-SEA,Wireless Earbuds,1,Metro Manila,Ninja Van,2026-06-02T10:00:00.000Z,paid
+SHP-WE-003,shopee,WE-BLK-SEA,Wireless Earbuds,1,Selangor,Ninja Van,2026-06-03T10:00:00.000Z,paid

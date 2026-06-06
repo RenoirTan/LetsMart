@@ -1,0 +1,5 @@
+{
+  "daysOfCoverBefore": 1.1,
+  "daysOfCoverAfter": 5.8,
+  "note": "Reorder recommendation and stockout flag reduce oversell risk."
+}

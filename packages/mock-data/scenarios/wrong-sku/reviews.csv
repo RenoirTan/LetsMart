@@ -1,0 +1,4 @@
+reviewId,channel,sku,productName,rating,text,createdAt
+RV-301,lazada,PC-IP15-CLR,Phone Case,1,"Wrong SKU. Ordered iPhone 15 clear, got iPhone 14 Pro case.",2026-06-05T09:00:00.000Z
+RV-302,lazada,PC-IP15-CLR,Phone Case,2,"Salah barang, lubang camera tidak ngam.",2026-06-05T10:10:00.000Z
+RV-303,shopee,PC-IP15-CLR,Phone Case,1,"Packaging says IP15 but actual casing is IP14P.",2026-06-05T11:25:00.000Z

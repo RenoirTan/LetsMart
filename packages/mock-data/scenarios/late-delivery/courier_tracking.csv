@@ -1,0 +1,5 @@
+trackingId,orderId,courier,region,promisedDays,actualDays,status
+JT-9001,SHP-WE-001,J&T Express,Selangor,3,6,stuck_at_hub
+JT-9002,LZD-PC-201,J&T Express,Selangor,3,7,failed_delivery_attempt
+JT-9003,LZD-PC-202,J&T Express,Selangor,3,6,stuck_at_hub
+JT-9004,TTS-DL-701,J&T Express,Selangor,3,6,linehaul_delay

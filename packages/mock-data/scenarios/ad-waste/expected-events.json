@@ -1,0 +1,8 @@
+[
+  {
+    "type": "ad_waste",
+    "sku": "DL-WHT-MY",
+    "severity": "medium",
+    "expectedWorker": "AdWasteWorker"
+  }
+]

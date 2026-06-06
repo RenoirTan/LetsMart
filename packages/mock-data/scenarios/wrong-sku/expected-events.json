@@ -1,0 +1,8 @@
+[
+  {
+    "type": "wrong_sku_complaint",
+    "sku": "PC-IP15-CLR",
+    "severity": "high",
+    "expectedWorker": "ReviewThemeWorker"
+  }
+]

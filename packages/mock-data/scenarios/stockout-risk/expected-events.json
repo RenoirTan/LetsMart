@@ -1,0 +1,8 @@
+[
+  {
+    "type": "stockout_risk",
+    "sku": "WE-BLK-SEA",
+    "severity": "high",
+    "expectedWorker": "InventoryVelocityWorker"
+  }
+]

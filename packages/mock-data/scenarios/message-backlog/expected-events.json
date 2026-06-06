@@ -1,0 +1,8 @@
+[
+  {
+    "type": "message_backlog",
+    "channel": "whatsapp",
+    "severity": "medium",
+    "expectedWorker": "MessageBacklogWorker"
+  }
+]

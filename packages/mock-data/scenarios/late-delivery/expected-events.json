@@ -1,0 +1,8 @@
+[
+  {
+    "type": "late_delivery_spike",
+    "channel": "courier",
+    "severity": "medium",
+    "expectedWorker": "CourierDelayWorker"
+  }
+]
