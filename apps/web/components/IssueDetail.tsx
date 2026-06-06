@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { ApprovalPanel } from "./ApprovalPanel";
 import { ChannelBadge, SeverityBadge, StatusBadge } from "./Badges";
+import { DraftedRepliesPanel } from "./DraftedRepliesPanel";
 import { ReasoningTimeline } from "./ReasoningTimeline";
 import { ToolLogPanel } from "./ToolLogPanel";
 import { VerificationPanel } from "./VerificationPanel";
@@ -36,7 +37,7 @@ export function IssueDetail() {
     return (
       <div className="empty">
         <h2>Issue no longer exists in demo state</h2>
-        <p>The dev server may have reloaded and cleared in-memory backend state. Go back to the dashboard and run the agent scan again.</p>
+        <p>The central demo state is empty or was reset. Go back to the dashboard and run the agent scan again.</p>
         <Link className="button primary" href="/">Back to dashboard</Link>
       </div>
     );
@@ -108,7 +109,7 @@ export function IssueDetail() {
             <p className="muted">Root cause: {issue.diagnosis?.rootCauseHypothesis}</p>
             <ReasoningTimeline steps={issue.diagnosis?.reasoningSteps ?? []} />
           </section>
-
+          <DraftedRepliesPanel logs={toolLogs} />
           <ToolLogPanel logs={toolLogs} />
         </div>
 

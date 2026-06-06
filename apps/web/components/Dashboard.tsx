@@ -19,8 +19,29 @@ export function Dashboard() {
   const [busy, setBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
 
+  async function refreshIssues() {
+    const nextIssues = await api.getIssues();
+    setIssues(nextIssues);
+  }
+
   useEffect(() => {
-    api.getIssues().then(setIssues).finally(() => setLoading(false));
+    refreshIssues().finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const refreshOnVisible = () => {
+      if (document.visibilityState === "visible") {
+        refreshIssues();
+      }
+    };
+
+    window.addEventListener("focus", refreshIssues);
+    document.addEventListener("visibilitychange", refreshOnVisible);
+
+    return () => {
+      window.removeEventListener("focus", refreshIssues);
+      document.removeEventListener("visibilitychange", refreshOnVisible);
+    };
   }, []);
 
   async function runScan() {

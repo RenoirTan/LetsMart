@@ -1,5 +1,6 @@
 import type { DemoData } from "@sea-ops/mock-data";
 import type { Channel, IssueType, MarketplaceEvent } from "@sea-ops/schemas";
+import { observeSimulatorEvents } from "./simulated-workers.ts";
 
 const id = () => globalThis.crypto?.randomUUID?.() ?? `id-${Date.now()}-${Math.random()}`;
 
@@ -216,3 +217,14 @@ export const demoWorkers: DemoWorker[] = [
   new SupplierDelayWorker(),
   new ListingHealthWorker(),
 ];
+
+export async function observeMarketplaceEvents(input: DemoData): Promise<MarketplaceEvent[]> {
+  const simulatorEvents = await observeSimulatorEvents();
+  if (simulatorEvents.length > 0) return simulatorEvents;
+
+  const workerOutputs = await Promise.all(demoWorkers.map((worker) => worker.observe(input)));
+  return workerOutputs.flat();
+}
+
+export { observeSimulatorEvents } from "./simulated-workers.ts";
+export { SimulatedSourceClient } from "./source-client.ts";

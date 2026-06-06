@@ -1,5 +1,5 @@
 {
-  "name": "@sea-ops/agents",
+  "name": "@sea-ops/simulated-server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,10 +10,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@sea-ops/schemas": "workspace:*",
-    "openai": "^6.9.1"
+    "@sea-ops/schemas": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^22.7.5",
     "typescript": "^5.6.3"
   }
 }

@@ -1,6 +1,10 @@
+import OpenAI from "openai";
+import { actionTypeSchema, issueSchema, proposedActionSchema, verificationResultSchema } from "@sea-ops/schemas";
 import type { ActionType, Issue, IssueType, MarketplaceEvent, ProposedAction, VerificationResult } from "@sea-ops/schemas";
 
 const id = () => globalThis.crypto?.randomUUID?.() ?? `id-${Date.now()}-${Math.random()}`;
+
+declare const process: { env?: Record<string, string | undefined> } | undefined;
 
 export abstract class BaseAgent<TInput, TOutput> {
   abstract readonly name: string;
@@ -14,6 +18,38 @@ export abstract class BaseAgent<TInput, TOutput> {
       return fallback();
     }
   }
+}
+
+export interface BuyerReplyDraftInput {
+  messages: Array<{
+    messageId: string;
+    buyerName: string;
+    body: string;
+    productName?: string;
+    status?: string;
+  }>;
+  context: Record<string, unknown>;
+}
+
+export interface BuyerReplyDraft {
+  messageId: string;
+  buyerName: string;
+  problemType: string;
+  urgency: "low" | "medium" | "high";
+  originalMessage: string;
+  draftText: string;
+}
+
+export interface BuyerReplyDraftMetadata {
+  agentUsed: "BuyerReplyDraftAgent";
+  draftSource: "openai" | "fallback";
+  model: string;
+  fallbackReason?: string;
+}
+
+export interface BuyerReplyDraftResult {
+  drafts: BuyerReplyDraft[];
+  metadata: BuyerReplyDraftMetadata;
 }
 
 const issueCopy: Record<IssueType, Pick<Issue, "title" | "summary">> = {
@@ -41,12 +77,116 @@ const issueCopy: Record<IssueType, Pick<Issue, "title" | "summary">> = {
   competitor_action: { title: "Competitor action detected", summary: "A competitor changed price, voucher, or stock availability." },
   supplier_delay: { title: "Supplier delay detected", summary: "Supplier signals suggest a replenishment delay." },
   listing_health: { title: "Listing health mismatch detected", summary: "A listed variant may not match operational inventory state." },
+  trend_signal: { title: "Marketplace trend opportunity detected", summary: "A fast-growing product or keyword trend may be worth merchant review." },
 };
 
 export class OpsDiagnosisAgent extends BaseAgent<MarketplaceEvent[], Issue[]> {
   readonly name = "OpsDiagnosisAgent";
 
   async run(events: MarketplaceEvent[]): Promise<Issue[]> {
+    return this.withFallback(
+      async () => {
+        const modelOutput = await completeJson<DiagnosisModelOutput>(
+          "You are a Southeast Asia marketplace operations diagnosis agent. Turn worker events into issue diagnoses. Return JSON only with an issues array. Each issue must include eventId, title, summary, rootCauseHypothesis, confidence, reasoningSteps, and supportingEvidenceIds.",
+          { events },
+        );
+
+        return buildIssuesFromModel(events, modelOutput);
+      },
+      () => deterministicIssues(events),
+    );
+  }
+}
+
+export class RiskClassificationAgent extends BaseAgent<Issue, ProposedAction[]> {
+  readonly name = "RiskClassificationAgent";
+
+  async run(issue: Issue): Promise<ProposedAction[]> {
+    return this.withFallback(
+      async () => {
+        const modelOutput = await completeJson<ActionModelOutput>(
+          `You are a SEA marketplace operations risk agent. Propose safe, useful marketplace operations actions for the issue. Return JSON only with an actions array. Allowed actionType values: ${actionTypeSchema.options.join(", ")}. Do not invent action types. Use safe, medium, high, or critical risk levels. Medium/high/critical actions require approval.`,
+          { issue },
+        );
+
+        return buildActionsFromModel(issue, modelOutput);
+      },
+      () => deterministicActions(issue),
+    );
+  }
+}
+
+export class VerificationAgent extends BaseAgent<Issue, VerificationResult> {
+  readonly name = "VerificationAgent";
+
+  async run(issue: Issue): Promise<VerificationResult> {
+    return this.withFallback(
+      async () => {
+        const modelOutput = await completeJson<VerificationModelOutput>(
+          "You are a SEA marketplace operations verification agent. Compare the issue evidence and executed or proposed actions. Return JSON only with status, metricBefore, metricAfter, and notes.",
+          { issue },
+        );
+
+        return buildVerificationFromModel(issue, modelOutput);
+      },
+      () => deterministicVerification(issue),
+    );
+  }
+}
+
+export class BuyerReplyDraftAgent extends BaseAgent<BuyerReplyDraftInput, BuyerReplyDraft[]> {
+  readonly name = "BuyerReplyDraftAgent";
+
+  async run(input: BuyerReplyDraftInput): Promise<BuyerReplyDraft[]> {
+    return (await this.runWithMetadata(input)).drafts;
+  }
+
+  async runWithMetadata(input: BuyerReplyDraftInput): Promise<BuyerReplyDraftResult> {
+    const model = process?.env?.OPENAI_MODEL ?? "gpt-4.1-mini";
+
+    try {
+      logAgent(this.name, `OpenAI request model=${model} messages=${input.messages.length}`);
+      const modelOutput = await completeJson<BuyerReplyDraftModelOutput>(
+        "You are a SEA marketplace support agent. Draft concise, empathetic WhatsApp replies for each buyer message. Return JSON only with a drafts array. Each draft must include messageId, buyerName, problemType, urgency, originalMessage, and draftText. Do not promise refunds or replacements as already completed. Ask for order details, tracking numbers, photos, or videos when needed. Use clear marketplace support language suitable for Malaysia/Singapore/Indonesia buyers.",
+        input,
+      );
+
+      const drafts = buildBuyerReplyDrafts(input, modelOutput);
+      logAgent(this.name, `OpenAI success model=${model} drafts=${drafts.length}`);
+
+      return {
+        drafts,
+        metadata: {
+          agentUsed: "BuyerReplyDraftAgent",
+          draftSource: "openai",
+          model,
+        },
+      };
+    } catch (error) {
+      const fallbackReason = error instanceof Error ? error.message : "Unknown OpenAI error";
+      logAgent(this.name, `OpenAI fallback model=${model} reason="${fallbackReason}"`);
+
+      return {
+        drafts: deterministicBuyerReplyDrafts(input),
+        metadata: {
+          agentUsed: "BuyerReplyDraftAgent",
+          draftSource: "fallback",
+          model,
+          fallbackReason,
+        },
+      };
+    }
+  }
+}
+
+const agentLogsEnabled = () => process?.env?.AGENT_LOGS !== "0";
+
+function logAgent(agentName: string, message: string) {
+  if (!agentLogsEnabled()) return;
+  console.log(`[agent:${agentName}] ${message}`);
+}
+
+function deterministicIssues(events: MarketplaceEvent[]): Issue[] {
     const now = new Date().toISOString();
     return events.map((event) => ({
       id: `issue-${event.type}`,
@@ -70,25 +210,17 @@ export class OpsDiagnosisAgent extends BaseAgent<MarketplaceEvent[], Issue[]> {
       updatedAt: now,
     }));
   }
-}
 
-export class RiskClassificationAgent extends BaseAgent<Issue, ProposedAction[]> {
-  readonly name = "RiskClassificationAgent";
-
-  async run(issue: Issue): Promise<ProposedAction[]> {
-    return actionCatalog(issue).map((action) => ({
+function deterministicActions(issue: Issue): ProposedAction[] {
+  return actionCatalog(issue).map((action) => ({
       id: `action-${issue.type}-${action.actionType}`,
       issueId: issue.id,
       status: "drafted",
       ...action,
     }));
-  }
 }
 
-export class VerificationAgent extends BaseAgent<Issue, VerificationResult> {
-  readonly name = "VerificationAgent";
-
-  async run(issue: Issue): Promise<VerificationResult> {
+function deterministicVerification(issue: Issue): VerificationResult {
     const now = new Date().toISOString();
     const first = issue.events[0];
     switch (issue.type) {
@@ -105,7 +237,6 @@ export class VerificationAgent extends BaseAgent<Issue, VerificationResult> {
       default:
         return { issueId: issue.id, status: "unchanged", metricBefore: {}, metricAfter: {}, notes: "No verification rule exists for this issue type yet.", verifiedAt: now };
     }
-  }
 }
 
 function rootCauseFor(type: IssueType): string {
@@ -119,6 +250,7 @@ function rootCauseFor(type: IssueType): string {
     competitor_action: "Competitor marketplace activity may affect conversion or buy-box pressure.",
     supplier_delay: "Supplier replenishment signals indicate a potential ETA slip.",
     listing_health: "Listing and inventory systems disagree on sellable availability.",
+    trend_signal: "Marketplace demand signals show a fast-growing keyword or product opportunity that has not been reviewed yet.",
   }[type];
 }
 
@@ -189,6 +321,11 @@ function actionCatalog(issue: Issue): Array<Omit<ProposedAction, "id" | "issueId
         action("draft_buyer_reply", "Draft WhatsApp replies", "Prepare SEA-localized reply drafts without sending them.", "Support can clear the queue faster.", commonSafe),
         action("send_buyer_message", "Send drafted replies", "Send selected buyer replies after approval.", "Buyers receive timely answers once merchant approves.", commonMedium),
       ];
+    case "trend_signal":
+      return [
+        action("create_internal_task", "Review trend opportunity", "Create a merchant task to review the detected marketplace trend.", "Merchant can decide whether to source, list, or promote the opportunity.", commonSafe),
+        action("draft_supplier_email", "Draft supplier inquiry", "Draft a supplier inquiry for pricing, MOQ, and lead time on the trending item.", "Merchant can quickly validate supply availability without sending automatically.", commonSafe),
+      ];
     default:
       return [action("summarize_issue", "Summarize issue", "Summarize the detected marketplace issue.", "Merchant can review the issue.", commonSafe)];
   }
@@ -199,3 +336,270 @@ export const promptTemplates = {
   riskClassification: "Classify each proposed marketplace action as safe, medium, high, or critical. Explain why approval is required when risk is not safe.",
   verification: "Compare before and after operational metrics and return improved, unchanged, worse, or needs_more_time.",
 };
+
+interface DiagnosisModelOutput {
+  issues?: Array<{
+    eventId?: unknown;
+    title?: unknown;
+    summary?: unknown;
+    rootCauseHypothesis?: unknown;
+    confidence?: unknown;
+    reasoningSteps?: unknown;
+    supportingEvidenceIds?: unknown;
+  }>;
+}
+
+interface ActionModelOutput {
+  actions?: Array<{
+    actionType?: unknown;
+    title?: unknown;
+    description?: unknown;
+    expectedOutcome?: unknown;
+    riskLevel?: unknown;
+    requiresApproval?: unknown;
+    payload?: unknown;
+  }>;
+}
+
+interface VerificationModelOutput {
+  status?: unknown;
+  metricBefore?: unknown;
+  metricAfter?: unknown;
+  notes?: unknown;
+}
+
+interface BuyerReplyDraftModelOutput {
+  drafts?: Array<{
+    messageId?: unknown;
+    buyerName?: unknown;
+    problemType?: unknown;
+    urgency?: unknown;
+    originalMessage?: unknown;
+    draftText?: unknown;
+  }>;
+}
+
+async function completeJson<TOutput>(systemPrompt: string, payload: unknown): Promise<TOutput> {
+  const client = createOpenAIClient();
+  if (!client) throw new Error("OPENAI_API_KEY is not set");
+
+  const response = await client.chat.completions.create({
+    model: process?.env?.OPENAI_MODEL ?? "gpt-4.1-mini",
+    temperature: 0.2,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: JSON.stringify(payload, null, 2) },
+    ],
+  });
+
+  const content = response.choices[0]?.message.content;
+  if (!content) throw new Error("OpenAI returned an empty response");
+  return JSON.parse(content) as TOutput;
+}
+
+function createOpenAIClient(): OpenAI | undefined {
+  const apiKey = process?.env?.OPENAI_API_KEY;
+  if (!apiKey) return undefined;
+  return new OpenAI({ apiKey });
+}
+
+function buildIssuesFromModel(events: MarketplaceEvent[], output: DiagnosisModelOutput): Issue[] {
+  const now = new Date().toISOString();
+  const modelIssues = Array.isArray(output.issues) ? output.issues : [];
+
+  return events.map((event, index) => {
+    const fallback = issueCopy[event.type];
+    const modelIssue = modelIssues.find((candidate) => candidate.eventId === event.id) ?? modelIssues[index];
+    const evidenceIds = event.evidence.map((evidence) => evidence.recordId);
+
+    return issueSchema.parse({
+      id: `issue-${event.type}`,
+      type: event.type,
+      title: stringOr(modelIssue?.title, fallback.title),
+      summary: stringOr(modelIssue?.summary, fallback.summary),
+      status: "diagnosed",
+      channel: event.channel,
+      affectedSku: event.sku,
+      productName: event.productName,
+      severity: event.severity,
+      events: [event],
+      diagnosis: {
+        rootCauseHypothesis: stringOr(modelIssue?.rootCauseHypothesis, rootCauseFor(event.type)),
+        confidence: confidenceOr(modelIssue?.confidence, confidenceFor(event.type)),
+        reasoningSteps: stringArrayOr(modelIssue?.reasoningSteps, reasoningFor(event)),
+        supportingEvidenceIds: stringArrayOr(modelIssue?.supportingEvidenceIds, evidenceIds).filter((recordId) => evidenceIds.includes(recordId)),
+      },
+      proposedActions: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+}
+
+function buildActionsFromModel(issue: Issue, output: ActionModelOutput): ProposedAction[] {
+  const fallbackActions = deterministicActions(issue);
+  const modelActions = Array.isArray(output.actions) ? output.actions : [];
+  const actions: ProposedAction[] = [];
+  const seen = new Set<ActionType>();
+
+  for (const modelAction of modelActions) {
+    const parsedType = actionTypeSchema.safeParse(modelAction.actionType);
+    if (!parsedType.success || seen.has(parsedType.data)) continue;
+    seen.add(parsedType.data);
+
+    const fallback = fallbackActions.find((action) => action.actionType === parsedType.data);
+    const riskLevel = riskLevelOr(modelAction.riskLevel, fallback?.riskLevel ?? "high");
+    const requiresApproval = typeof modelAction.requiresApproval === "boolean" ? modelAction.requiresApproval : riskLevel !== "safe";
+
+    actions.push(proposedActionSchema.parse({
+      id: `action-${issue.type}-${parsedType.data}`,
+      issueId: issue.id,
+      actionType: parsedType.data,
+      title: stringOr(modelAction.title, fallback?.title ?? parsedType.data.replaceAll("_", " ")),
+      description: stringOr(modelAction.description, fallback?.description ?? "Review and act on this marketplace issue."),
+      expectedOutcome: stringOr(modelAction.expectedOutcome, fallback?.expectedOutcome ?? "Merchant can review the issue with operational context."),
+      riskLevel,
+      requiresApproval,
+      payload: {
+        issueId: issue.id,
+        sku: issue.affectedSku,
+        productName: issue.productName,
+        ...objectOr(modelAction.payload, {}),
+      },
+      status: "drafted",
+    }));
+  }
+
+  if (actions.length === 0) throw new Error("OpenAI returned no valid actions");
+  return actions;
+}
+
+function buildVerificationFromModel(issue: Issue, output: VerificationModelOutput): VerificationResult {
+  const status = output.status === "improved" || output.status === "unchanged" || output.status === "worse" || output.status === "needs_more_time"
+    ? output.status
+    : "unchanged";
+
+  return verificationResultSchema.parse({
+    issueId: issue.id,
+    status,
+    metricBefore: metricRecordOr(output.metricBefore, {}),
+    metricAfter: metricRecordOr(output.metricAfter, {}),
+    notes: stringOr(output.notes, "The model could not confidently verify a material operational change yet."),
+    verifiedAt: new Date().toISOString(),
+  });
+}
+
+function buildBuyerReplyDrafts(input: BuyerReplyDraftInput, output: BuyerReplyDraftModelOutput): BuyerReplyDraft[] {
+  const fallbackDrafts = deterministicBuyerReplyDrafts(input);
+  const modelDrafts = Array.isArray(output.drafts) ? output.drafts : [];
+
+  return input.messages.map((message) => {
+    const fallback = fallbackDrafts.find((draft) => draft.messageId === message.messageId) ?? fallbackDraftForMessage(message);
+    const modelDraft = modelDrafts.find((draft) => draft.messageId === message.messageId);
+    const problemType = stringOr(modelDraft?.problemType, fallback.problemType);
+
+    return {
+      messageId: message.messageId,
+      buyerName: stringOr(modelDraft?.buyerName, message.buyerName),
+      problemType,
+      urgency: urgencyOr(modelDraft?.urgency, fallback.urgency),
+      originalMessage: stringOr(modelDraft?.originalMessage, message.body),
+      draftText: stringOr(modelDraft?.draftText, fallback.draftText),
+    };
+  });
+}
+
+function deterministicBuyerReplyDrafts(input: BuyerReplyDraftInput): BuyerReplyDraft[] {
+  return input.messages.map(fallbackDraftForMessage);
+}
+
+function fallbackDraftForMessage(message: BuyerReplyDraftInput["messages"][number]): BuyerReplyDraft {
+  const problemType = classifyBuyerProblem(message.body);
+  return {
+    messageId: message.messageId,
+    buyerName: message.buyerName,
+    problemType,
+    urgency: urgencyForBuyerProblem(problemType),
+    originalMessage: message.body,
+    draftText: fallbackBuyerReply(message, problemType),
+  };
+}
+
+function classifyBuyerProblem(body: string): string {
+  const text = body.toLowerCase();
+  if (/refund|return|money back|bayar balik/.test(text)) return "refund_request";
+  if (/exchange|change|replace|replacement/.test(text)) return "exchange_request";
+  if (/broken|defect|rosak|no sound|not working|switch|scratch|damaged/.test(text)) return "defective_product";
+  if (/wrong|salah|model|colour|color|case|received one/.test(text)) return "wrong_item";
+  if (/parcel|tracking|not moved|delay|lambat|ship|delivery|courier/.test(text)) return "shipping_delay";
+  if (/address|alamat/.test(text)) return "address_change";
+  if (/cod|cash|payment|bayar|deducted/.test(text)) return "cod_payment";
+  if (/warranty|guarantee/.test(text)) return "warranty";
+  if (/stock|available|reserve|ada|self pickup/.test(text)) return "stock_check";
+  return "buyer_message";
+}
+
+function urgencyForBuyerProblem(problemType: string): BuyerReplyDraft["urgency"] {
+  if (["refund_request", "exchange_request", "defective_product", "wrong_item"].includes(problemType)) return "high";
+  if (["shipping_delay", "address_change", "cod_payment"].includes(problemType)) return "medium";
+  return "low";
+}
+
+function fallbackBuyerReply(message: BuyerReplyDraftInput["messages"][number], problemType: string): string {
+  const product = message.productName ? ` for ${message.productName}` : "";
+  switch (problemType) {
+    case "defective_product":
+      return `Hi ${message.buyerName}, sorry the item${product} arrived with an issue. Please send your order ID plus a short photo/video of the defect so we can check exchange or warranty options for you.`;
+    case "wrong_item":
+      return `Hi ${message.buyerName}, sorry you received the wrong item. Please share your order ID and a photo of what arrived, then we will guide you on the fastest exchange next step.`;
+    case "refund_request":
+      return `Hi ${message.buyerName}, sorry for the trouble. Please send your order ID and a photo/video of the issue. We will review the case and advise the correct refund or return process.`;
+    case "exchange_request":
+      return `Hi ${message.buyerName}, we can help check exchange eligibility. Please send your order ID, the item condition, and the variant you need so we can confirm the next step.`;
+    case "shipping_delay":
+      return `Hi ${message.buyerName}, sorry for the delay. Please send your order ID or tracking number and we will check the courier status and update you as soon as possible.`;
+    case "address_change":
+      return `Hi ${message.buyerName}, please send the new address and order ID. If the parcel has not shipped yet, we will try to update it before handover to courier.`;
+    case "cod_payment":
+      return `Hi ${message.buyerName}, thanks for checking. Please share your area and item, and we will confirm the COD/payment status for your order.`;
+    case "warranty":
+      return `Hi ${message.buyerName}, warranty coverage depends on the item and issue. Please share the product name and order ID and we will confirm the warranty details.`;
+    case "stock_check":
+      return `Hi ${message.buyerName}, thanks for messaging. Please tell us which variant you want and when you need it, then we will confirm stock availability for you.`;
+    default:
+      return `Hi ${message.buyerName}, thanks for messaging. Please share your order ID or product details so we can help you faster.`;
+  }
+}
+
+function stringOr(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function stringArrayOr(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) return fallback;
+  const strings = value.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim());
+  return strings.length > 0 ? strings : fallback;
+}
+
+function confidenceOr(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || Number.isNaN(value)) return fallback;
+  return Math.min(1, Math.max(0, value));
+}
+
+function riskLevelOr(value: unknown, fallback: ProposedAction["riskLevel"]): ProposedAction["riskLevel"] {
+  return value === "safe" || value === "medium" || value === "high" || value === "critical" ? value : fallback;
+}
+
+function urgencyOr(value: unknown, fallback: BuyerReplyDraft["urgency"]): BuyerReplyDraft["urgency"] {
+  return value === "low" || value === "medium" || value === "high" ? value : fallback;
+}
+
+function objectOr(value: unknown, fallback: Record<string, unknown>): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : fallback;
+}
+
+function metricRecordOr(value: unknown, fallback: Record<string, string | number>): Record<string, string | number> {
+  const object = objectOr(value, fallback);
+  return Object.fromEntries(Object.entries(object).filter((entry): entry is [string, string | number] => typeof entry[1] === "string" || typeof entry[1] === "number"));
+}

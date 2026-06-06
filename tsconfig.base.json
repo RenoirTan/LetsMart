@@ -6,6 +6,7 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
@@ -18,6 +19,7 @@
       "@sea-ops/schemas": ["packages/schemas/src"],
       "@sea-ops/mock-data": ["packages/mock-data/src"],
       "@sea-ops/workers": ["packages/workers/src"],
+      "@sea-ops/simulated-server": ["packages/simulated-server/src"],
       "@sea-ops/agents": ["packages/agents/src"],
       "@sea-ops/tools": ["packages/tools/src"],
       "@sea-ops/core": ["packages/core/src"]

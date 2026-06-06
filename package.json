@@ -7,7 +7,10 @@
     "dev": "corepack pnpm --filter @sea-ops/web dev",
     "build": "corepack pnpm --filter @sea-ops/web build",
     "typecheck": "corepack pnpm -r typecheck",
-    "lint": "corepack pnpm --filter @sea-ops/web lint"
+    "lint": "corepack pnpm --filter @sea-ops/web lint",
+    "dev:simulators": "node apps/simulated-platforms/src/index.ts",
+    "dev:simulator": "node apps/simulated-platforms/src/index.ts --server",
+    "check:simulators": "node --check apps/simulated-platforms/src/index.ts"
   },
   "devDependencies": {
     "typescript": "^5.6.3"

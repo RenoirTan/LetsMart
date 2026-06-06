@@ -24,6 +24,7 @@ export const issueTypeSchema = z.enum([
   "competitor_action",
   "supplier_delay",
   "listing_health",
+  "trend_signal",
 ]);
 
 export const issueStatusSchema = z.enum([
@@ -93,6 +94,103 @@ export const marketplaceEventSchema = z.object({
 });
 
 export type MarketplaceEvent = z.infer<typeof marketplaceEventSchema>;
+
+export type PrimitiveValue = string | number | boolean;
+
+export type MockRecord = {
+  id: string;
+  [key: string]: unknown;
+};
+
+export type SourceType =
+  | "inventory"
+  | "sku_mapping"
+  | "courier"
+  | "ads"
+  | "messages"
+  | "competitor"
+  | "trend"
+  | "supplier";
+
+export type SourceEvidence = {
+  collection: string;
+  recordId: string;
+  label: string;
+  value: PrimitiveValue;
+};
+
+export type SourceEvent = {
+  id: string;
+  serverId: string;
+  sourceType: SourceType;
+  issueType: IssueType;
+  severity: Severity;
+  productName?: string;
+  sku?: string;
+  metrics: Record<string, PrimitiveValue>;
+  evidence: SourceEvidence[];
+  version: number;
+  createdAt: string;
+};
+
+export type SimulatedServerState = {
+  serverId: string;
+  version: number;
+  collections: Record<string, MockRecord[]>;
+  events: SourceEvent[];
+  actionLogs: SimulatedActionResult[];
+  lastUpdatedAt: string;
+};
+
+export type HealthResponse = {
+  ok: true;
+  serverId: string;
+  displayName: string;
+  version: number;
+  lastUpdatedAt: string;
+};
+
+export type SnapshotResponse = {
+  serverId: string;
+  version: number;
+  collections: Record<string, MockRecord[]>;
+  lastUpdatedAt: string;
+};
+
+export type SimulatedActionRequest = {
+  actionId: string;
+  issueId: string;
+  actionType: string;
+  approvedBy: string;
+  payload: Record<string, unknown>;
+};
+
+export type SimulatedActionResult = {
+  actionId: string;
+  accepted: boolean;
+  mutationSummary: string;
+  stateBefore: Record<string, unknown>;
+  stateAfter: Record<string, unknown>;
+  version: number;
+  appliedAt: string;
+};
+
+export type TriggerRequest = {
+  scenario?: string;
+  payload?: Record<string, unknown>;
+};
+
+export type TriggerResult = {
+  accepted: boolean;
+  mutationSummary: string;
+  version: number;
+  triggeredAt: string;
+};
+
+export type CollectionSummary = {
+  name: string;
+  count: number;
+};
 
 export const diagnosisSchema = z.object({
   rootCauseHypothesis: z.string(),
