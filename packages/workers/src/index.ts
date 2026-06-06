@@ -3,6 +3,17 @@ import type { Channel, IssueType, MarketplaceEvent } from "@sea-ops/schemas";
 
 const id = () => globalThis.crypto?.randomUUID?.() ?? `id-${Date.now()}-${Math.random()}`;
 
+const demoThresholds = {
+  stockoutDaysOfCover: 3,
+  wrongSkuComplaintCount: 3,
+  lateDeliveryMinAffectedOrders: 3,
+  lateDeliveryMinDelayDays: 3,
+  adWasteMinSpend: 300,
+  adWasteMaxRoas: 1,
+  adWasteMaxStockOnHand: 10,
+  messageBacklogMinUnanswered: 5,
+};
+
 export abstract class BaseWorker<TInput, TEvent extends MarketplaceEvent> {
   abstract readonly name: string;
   abstract readonly eventTypes: IssueType[];
@@ -31,7 +42,7 @@ export class InventoryVelocityWorker extends BaseWorker<DemoData, MarketplaceEve
       const sevenDayUnits = input.orders.filter((order) => order.sku === item.sku).reduce((sum, order) => sum + order.quantity, 0);
       const sellableStock = item.stockOnHand - item.reserved;
       const daysOfCover = Number((sellableStock / Math.max(sevenDayUnits / 7, 1)).toFixed(1));
-      if (daysOfCover <= 2) {
+      if (daysOfCover <= demoThresholds.stockoutDaysOfCover) {
         events.push(this.createEvent({
           type: "stockout_risk",
           channel: item.channel as Channel,
@@ -57,7 +68,7 @@ export class ReviewThemeWorker extends BaseWorker<DemoData, MarketplaceEvent> {
 
   async observe(input: DemoData): Promise<MarketplaceEvent[]> {
     const wrongSkuReviews = input.reviews.filter((review) => /wrong|salah|ip14|14 pro/i.test(review.text));
-    if (wrongSkuReviews.length < 3) return [];
+    if (wrongSkuReviews.length < demoThresholds.wrongSkuComplaintCount) return [];
 
     return [this.createEvent({
       type: "wrong_sku_complaint",
@@ -83,8 +94,10 @@ export class CourierDelayWorker extends BaseWorker<DemoData, MarketplaceEvent> {
   readonly eventTypes = ["late_delivery_spike"] as IssueType[];
 
   async observe(input: DemoData): Promise<MarketplaceEvent[]> {
-    const delayed = input.courierTracking.filter((row) => row.courier === "J&T Express" && row.actualDays - row.promisedDays >= 3);
-    if (delayed.length < 3) return [];
+    const delayed = input.courierTracking.filter(
+      (row) => row.courier === "J&T Express" && row.actualDays - row.promisedDays >= demoThresholds.lateDeliveryMinDelayDays,
+    );
+    if (delayed.length < demoThresholds.lateDeliveryMinAffectedOrders) return [];
 
     return [this.createEvent({
       type: "late_delivery_spike",
@@ -109,7 +122,12 @@ export class AdWasteWorker extends BaseWorker<DemoData, MarketplaceEvent> {
 
   async observe(input: DemoData): Promise<MarketplaceEvent[]> {
     return input.adPerformance
-      .filter((campaign) => campaign.spend > 300 && campaign.roas < 1 && campaign.stockOnHand < 10)
+      .filter(
+        (campaign) =>
+          campaign.spend > demoThresholds.adWasteMinSpend &&
+          campaign.roas < demoThresholds.adWasteMaxRoas &&
+          campaign.stockOnHand < demoThresholds.adWasteMaxStockOnHand,
+      )
       .map((campaign) => this.createEvent({
         type: "ad_waste",
         channel: "ads",
@@ -132,7 +150,7 @@ export class MessageBacklogWorker extends BaseWorker<DemoData, MarketplaceEvent>
 
   async observe(input: DemoData): Promise<MarketplaceEvent[]> {
     const unanswered = input.messages.filter((message) => !message.repliedAt);
-    if (unanswered.length < 5) return [];
+    if (unanswered.length < demoThresholds.messageBacklogMinUnanswered) return [];
 
     return [this.createEvent({
       type: "message_backlog",

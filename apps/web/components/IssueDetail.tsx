@@ -14,16 +14,33 @@ import { VerificationPanel } from "./VerificationPanel";
 export function IssueDetail() {
   const params = useParams<{ id: string }>();
   const [detail, setDetail] = useState<IssueDetailResponse>();
+  const [missing, setMissing] = useState(false);
   const [rating, setRating] = useState<MerchantFeedback["rating"]>("helpful");
   const [note, setNote] = useState("");
 
   const load = useCallback(async () => {
-    setDetail(await api.getIssue(params.id));
+    try {
+      setMissing(false);
+      setDetail(await api.getIssue(params.id));
+    } catch {
+      setDetail(undefined);
+      setMissing(true);
+    }
   }, [params.id]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  if (missing) {
+    return (
+      <div className="empty">
+        <h2>Issue no longer exists in demo state</h2>
+        <p>The dev server may have reloaded and cleared in-memory backend state. Go back to the dashboard and run the agent scan again.</p>
+        <Link className="button primary" href="/">Back to dashboard</Link>
+      </div>
+    );
+  }
 
   if (!detail) return <div className="empty">Loading issue...</div>;
 
