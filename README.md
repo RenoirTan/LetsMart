@@ -10,6 +10,23 @@ Install dependencies:
 corepack pnpm install
 ```
 
+## OpenAI Configuration
+
+Create or update `apps/web/.env.local`:
+
+```env
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_MODEL=gpt-4.1-mini
+```
+
+Do not use `NEXT_PUBLIC_OPENAI_API_KEY`; that would expose the key to the browser.
+
+After changing `.env.local`, restart the web server:
+
+```bash
+corepack pnpm dev
+```
+
 Start all simulated platform servers in one terminal:
 
 ```bash
