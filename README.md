@@ -4,22 +4,64 @@ Hackathon monorepo for a Southeast Asia-native autonomous marketplace operations
 
 ## Quick Start
 
+Install dependencies:
+
 ```bash
-pnpm install
-pnpm dev
+corepack pnpm install
+```
+
+Start all simulated platform servers in one terminal:
+
+```bash
+corepack pnpm dev:simulators
+```
+
+Start the web app and central API server in another terminal:
+
+```bash
+corepack pnpm dev
 ```
 
 Open `http://localhost:3000`, then click `Run Agent Scan`.
 
+## Simulated Server Pages
+
+Each simulated platform server exposes a browser-readable state page:
+
+```text
+http://localhost:5101  shopee-inventory-server
+http://localhost:5102  tiktok-sku-server
+http://localhost:5103  courier-delay-server
+http://localhost:5104  ads-waste-server
+http://localhost:5105  whatsapp-backlog-server
+http://localhost:5106  competitor-watch-server
+http://localhost:5107  trend-watch-server
+http://localhost:5108  supplier-delay-server
+```
+
+On Linux, open all simulator pages with:
+
+```bash
+for port in 5101 5102 5103 5104 5105 5106 5107 5108; do xdg-open "http://localhost:$port"; done
+```
+
+Simulator, worker, and tool-forwarding logs are enabled by default. To disable them:
+
+```bash
+SIMULATOR_LOGS=0 corepack pnpm dev:simulators
+```
+
 ## Workspace
 
 - `apps/web` - Next.js dashboard and API routes.
+- `apps/simulated-platforms` - Local simulated marketplace, courier, supplier, ads, and buyer-message servers.
 - `packages/schemas` - Shared TypeScript and Zod schemas.
 - `packages/mock-data` - Scenario fixtures and operational mock data.
 - `packages/workers` - Signal workers that emit marketplace events.
 - `packages/agents` - Deterministic agent workflow and prompt templates.
 - `packages/tools` - Simulated business action tools.
 - `packages/core` - Orchestration, state, risk policy, and API helpers.
+- `packages/simulated-server` - Shared in-memory HTTP simulator runtime.
 - `docs/team-prompts` - Team prompts from the project plan.
 
 ## Demo Flow
